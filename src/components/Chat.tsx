@@ -104,17 +104,27 @@ function AssistantExtras({ calls }: { calls: TraceCall[] }) {
         </div>
       )}
       {calls.length > 0 && (
-        <details className="steps">
-          <summary>Steps taken ({calls.length})</summary>
-          <ol>
-            {calls.map((c, i) => (
-              <li key={i}>
-                <code>{c.name}</code>
-                <pre>{shortJson({ input: c.input, result: c.output })}</pre>
-              </li>
-            ))}
+        <div className="steps">
+          <p className="steps-title">Agent workflow · {calls.length} {calls.length === 1 ? 'step' : 'steps'}</p>
+          <ol className="flow-steps">
+            {calls.map((c, i) => {
+              const write = c.name === 'createClaim';
+              const result = String(c.output.status ?? c.output.outcome ?? (c.output.ok === false ? 'refused' : 'ok'));
+              return (
+                <li key={i} className={`flow-step${c.output.ok === false ? ' flow-step-bad' : ''}`}>
+                  <span className="flow-num">{i + 1}</span>
+                  <span className={`flow-kind ${write ? 'flow-write' : 'flow-read'}`}>{write ? 'WRITE' : 'READ'}</span>
+                  <code>{c.name}</code>
+                  <span className="flow-result">→ {result}</span>
+                  <details>
+                    <summary>details</summary>
+                    <pre>{shortJson({ input: c.input, result: c.output })}</pre>
+                  </details>
+                </li>
+              );
+            })}
           </ol>
-        </details>
+        </div>
       )}
     </>
   );

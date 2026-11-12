@@ -11,7 +11,7 @@ export async function Header() {
   return (
     <header className="topbar">
       <div className="topbar-inner">
-        <Link href="/chat" className="brand">
+        <Link href="/" className="brand">
           ClaimEase
         </Link>
         <NavLinks />
