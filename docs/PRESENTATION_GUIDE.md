@@ -26,7 +26,7 @@ and keep `docs/ClaimEase_slides.pdf` open in a second window.
 2. **Policy question, nothing saved:** `How much can I claim for a hotel in Mumbai?`
    → ₹5,000 per night. *Say:* "Read-only tool. Mumbai is a metro city, so the metro limit applies."
 3. **Rule break:** `I spent 6,500 on a client dinner with Northwind today, submit it.`
-   → Saved as **flagged**: ₹3,500 over the L2 limit. *Say:* "The status is decided by our code, not by the AI."
+   → Saved as **flagged**: ₹3,500 over the L2 limit. *Say:* "The status is decided by our code, not by the AI." Point at the **limit meter** on the claim card: it fills past the black limit line and turns amber-red when over.
 4. **Our extra feature, duplicate detection:** send prompt 1 again, word for word.
    → Flagged as a **possible duplicate** of the claim from step 1. *Say:* "Duplicate claims are a real source of loss for finance. ClaimEase catches them automatically."
 5. *(If time)* **Refusal:** `I spent 500 on lunch on 1 Sep, submit it.` → refused, older than 60 days, nothing saved.
@@ -45,6 +45,7 @@ Then click **My claims** to show the new rows came straight from Supabase.
 | Where are your keys? | Devanath | In `.env.local` (not in Git) and in Vercel environment variables. Never in the frontend. |
 | How do you detect duplicates? | Sarwan | Before saving, we look for a claim by the same employee with the same category, amount and date that isn't rejected. If one exists, the new claim is flagged with that claim number. |
 | What happens if Gemini is down or out of quota? | Sarwan | A built-in rule-based assistant answers with the same tools, so the demo never crashes. If a claim was already saved, we never re-run it, so nothing is filed twice. |
+| What is the bar on the claim card? | Lalitya | The limit meter: how much of the grade limit this claim uses. Green within the limit; past the black line it turns amber-red, so the employee sees at a glance why it was flagged. |
 | What would you add next? | Lalitya | Receipt photo upload with OCR to fill amount and date, real sign-in, and a monthly spend summary for finance. |
 | Who wrote this part? | Owner | Each member explains their own area, even if AI helped write it. |
 

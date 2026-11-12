@@ -171,3 +171,13 @@ code { font-family: var(--font-outlier); font-size: var(--text-sm); }
   .chat { height: 88dvh; }
   .chat-head .muted { font-size: var(--text-sm); }
 }
+
+/* ---------- limit meter (claim card) ---------- */
+.meter { margin-top: var(--space-sm); }
+.meter-track { position: relative; height: 10px; border-radius: var(--radius-pill); background: var(--color-paper-3); overflow: visible; }
+.meter-fill { height: 100%; border-radius: var(--radius-pill); background: var(--color-success); transform-origin: left; animation: meter-grow var(--dur-long) var(--ease-out) both; }
+.meter-fill.meter-over { background: linear-gradient(90deg, var(--color-success) 0%, var(--color-warn) 70%, var(--color-error) 100%); }
+.meter-limit { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--color-ink); border-radius: 1px; }
+.meter-text { margin-top: var(--space-2xs); }
+@keyframes meter-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .meter-fill { animation: none; } }

@@ -58,7 +58,28 @@ function ClaimCard({ claim, rule }: { claim: SlimClaim; rule: { max_amount: numb
           </>
         )}
       </dl>
+      {rule && <LimitMeter claim={claim} rule={rule} />}
       {claim.flag_reason && <p className="reason reason-flag">{claim.flag_reason}</p>}
+    </div>
+  );
+}
+
+/** Amount against the grade limit: fills to the limit marker, and past it in amber when over. */
+function LimitMeter({ claim, rule }: { claim: SlimClaim; rule: { max_amount: number; unit: string } }) {
+  const spent = rule.unit === 'per_night' ? claim.amount / Math.max(claim.units, 1) : claim.amount;
+  const scale = Math.max(spent, rule.max_amount) || 1;
+  const over = spent > rule.max_amount;
+  const pct = Math.round((spent / rule.max_amount) * 100);
+  return (
+    <div className="meter" role="img" aria-label={`${pct}% of the ${inr(rule.max_amount)} limit`}>
+      <div className="meter-track">
+        <div className={`meter-fill${over ? ' meter-over' : ''}`} style={{ width: `${(spent / scale) * 100}%` }} />
+        <div className="meter-limit" style={{ left: `${(rule.max_amount / scale) * 100}%` }} />
+      </div>
+      <p className="meter-text small">
+        <span className={over ? 'status-flagged' : 'status-approved'}>{pct}% of limit</span>
+        <span className="muted"> · {inr(spent)} of {inr(rule.max_amount)}{rule.unit === 'per_night' ? ' per night' : ''}</span>
+      </p>
     </div>
   );
 }
