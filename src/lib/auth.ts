@@ -12,5 +12,5 @@ export async function currentEmployee(): Promise<Employee> {
   const jar = await cookies();
   const db = getDb();
   const wanted = jar.get(USER_COOKIE)?.value;
-  return (wanted && getEmployeeById(db, wanted)) || (getEmployeeById(db, DEFAULT_USER_ID) as Employee);
+  return (wanted && (await getEmployeeById(db, wanted))) || ((await getEmployeeById(db, DEFAULT_USER_ID)) as Employee);
 }

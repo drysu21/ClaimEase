@@ -2,7 +2,7 @@
 // fallback and the pages all go through these functions, so a language model can never
 // decide a claim's status: it can only ask this module to evaluate and save.
 
-import { all, one, run, type Db } from './db';
+import { must, type Db } from './db';
 import {
   CATEGORY_BY_KEY, MAX_CLAIM_AGE_DAYS, cityTier, daysBetween, parseISODate,
   inr, claimRef, formatDate, type CityTier, type Grade, type Status,
@@ -85,31 +85,30 @@ const REVIEWABLE: Status[] = ['pending', 'flagged'];
 
 // ---------- employees and policy lookups ----------
 
-export function getEmployeeById(db: Db, id: string): Employee | null {
-  return one<Employee>(db, 'SELECT id, name, email, grade, department, role FROM employees WHERE id = ?', id);
+const EMP_COLS = 'id, name, email, grade, department, role';
+
+export async function getEmployeeById(db: Db, id: string): Promise<Employee | null> {
+  return must(await db.from('employees').select(EMP_COLS).eq('id', id).maybeSingle()) as Employee | null;
 }
 
-export function listEmployees(db: Db): Employee[] {
-  return all<Employee>(db, 'SELECT id, name, email, grade, department, role FROM employees ORDER BY id');
+export async function listEmployees(db: Db): Promise<Employee[]> {
+  return must(await db.from('employees').select(EMP_COLS).order('id')) as Employee[];
 }
 
 /** Rules for one category and grade. For hotels, optionally narrowed to one city tier. */
-export function getRules(db: Db, category: string, grade: Grade, tier: CityTier | null = null): PolicyRule[] {
-  const rows = all<PolicyRule>(
-    db,
-    'SELECT city_tier, max_amount, unit, notes FROM policy_rules WHERE category = ? AND grade = ? ORDER BY city_tier',
-    category,
-    grade,
-  );
+export async function getRules(db: Db, category: string, grade: Grade, tier: CityTier | null = null): Promise<PolicyRule[]> {
+  const rows = must(
+    await db.from('policy_rules').select('city_tier, max_amount, unit, notes')
+      .eq('category', category).eq('grade', grade).order('city_tier'),
+  ) as PolicyRule[];
   return tier ? rows.filter((r) => r.city_tier === 'any' || r.city_tier === tier) : rows;
 }
 
-export function getAllRulesForGrade(db: Db, grade: Grade): (PolicyRule & { category: string })[] {
-  return all(
-    db,
-    'SELECT category, city_tier, max_amount, unit, notes FROM policy_rules WHERE grade = ? ORDER BY category, city_tier',
-    grade,
-  );
+export async function getAllRulesForGrade(db: Db, grade: Grade): Promise<(PolicyRule & { category: string })[]> {
+  return must(
+    await db.from('policy_rules').select('category, city_tier, max_amount, unit, notes')
+      .eq('grade', grade).order('category').order('city_tier'),
+  ) as (PolicyRule & { category: string })[];
 }
 
 // ---------- evaluation (no writes) ----------
@@ -120,7 +119,7 @@ export function getAllRulesForGrade(db: Db, grade: Grade): (PolicyRule & { categ
  *   flagged -> can be saved, but breaks a limit: saved as flagged with the reason
  *   pending -> within policy: saved as pending
  */
-export function evaluateClaim(db: Db, employee: Employee, input: ClaimInput, today: string): Evaluation {
+export async function evaluateClaim(db: Db, employee: Employee, input: ClaimInput, today: string): Promise<Evaluation> {
   const block: string[] = [];
   const flags: string[] = [];
 
@@ -163,7 +162,7 @@ export function evaluateClaim(db: Db, employee: Employee, input: ClaimInput, tod
   let compared: number | null = null;
   let overBy: number | null = null;
   if (cat) {
-    rule = getRules(db, cat.key, employee.grade, tier)[0] ?? null;
+    rule = (await getRules(db, cat.key, employee.grade, tier))[0] ?? null;
     if (!rule) {
       flags.push(
         `There is no policy rule for ${cat.label.toLowerCase()} at grade ${employee.grade}, so finance needs to look at it.`,
@@ -211,7 +210,8 @@ export function evaluateClaim(db: Db, employee: Employee, input: ClaimInput, tod
 type ClaimRow = Omit<Claim, 'ref' | 'category_label'>;
 
 export function toClaim<T extends ClaimRow>(row: T): T & { ref: string; category_label: string } {
-  return { ...row, ref: claimRef(row.id), category_label: CATEGORY_BY_KEY[row.category]?.label ?? row.category };
+  // Postgres numeric can arrive as a string; the UI and agent expect numbers.
+  return { ...row, amount: Number(row.amount), ref: claimRef(row.id), category_label: CATEGORY_BY_KEY[row.category]?.label ?? row.category };
 }
 
 export type CreateResult =
@@ -222,14 +222,14 @@ export type CreateResult =
  * Evaluates again (never trusting an earlier check) and saves.
  * `now` is the submission timestamp, injectable for seeding and tests.
  */
-export function createClaim(
+export async function createClaim(
   db: Db,
   employee: Employee,
   input: ClaimInput,
   { today, now = new Date().toISOString() }: { today: string; now?: string },
-): CreateResult {
+): Promise<CreateResult> {
   const description = String(input.description ?? '').replace(/\s+/g, ' ').trim().slice(0, 300);
-  const ev = evaluateClaim(db, employee, input, today);
+  const ev = await evaluateClaim(db, employee, input, today);
   if (!description) ev.block_reasons.push('A short description of the expense is required.');
   if (ev.block_reasons.length) {
     return { ok: false, saved: false, reasons: ev.block_reasons, evaluation: { ...ev, outcome: 'blocked' } };
@@ -237,74 +237,76 @@ export function createClaim(
 
   const status: Status = ev.outcome === 'flagged' ? 'flagged' : 'pending';
   const flagReason = status === 'flagged' ? ev.flag_reasons.join(' ') : null;
-  const info = run(
-    db,
-    `INSERT INTO claims (employee_id, category, description, amount, units, city, expense_date, submitted_at,
-                         status, flag_reason, policy_limit)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    employee.id, ev.category, description, ev.amount, ev.units, ev.city, ev.expense_date, now,
-    status, flagReason, ev.rule?.max_amount ?? null,
-  );
-  const row = one<ClaimRow>(db, 'SELECT * FROM claims WHERE id = ?', Number(info.lastInsertRowid));
-  return { ok: true, saved: true, claim: toClaim(row as ClaimRow), evaluation: ev };
+  const row = must(
+    await db.from('claims').insert({
+      employee_id: employee.id, category: ev.category, description, amount: ev.amount, units: ev.units, city: ev.city,
+      expense_date: ev.expense_date, submitted_at: now, status, flag_reason: flagReason, policy_limit: ev.rule?.max_amount ?? null,
+    }).select().single(),
+  ) as ClaimRow;
+  return { ok: true, saved: true, claim: toClaim(row), evaluation: ev };
 }
 
 // ---------- reads ----------
 
-export function listMyClaims(db: Db, employeeId: string, opts: { status?: Status; limit?: number } = {}): Claim[] {
+export async function listMyClaims(db: Db, employeeId: string, opts: { status?: Status; limit?: number } = {}): Promise<Claim[]> {
   const lim = Math.min(Math.max(Number(opts.limit) || 50, 1), 200);
-  const rows = opts.status
-    ? all<ClaimRow>(db, 'SELECT * FROM claims WHERE employee_id = ? AND status = ? ORDER BY id DESC LIMIT ?', employeeId, opts.status, lim)
-    : all<ClaimRow>(db, 'SELECT * FROM claims WHERE employee_id = ? ORDER BY id DESC LIMIT ?', employeeId, lim);
+  let q = db.from('claims').select('*').eq('employee_id', employeeId);
+  if (opts.status) q = q.eq('status', opts.status);
+  const rows = must(await q.order('id', { ascending: false }).limit(lim)) as ClaimRow[];
   return rows.map(toClaim);
 }
 
 export type StatusSummary = Record<Status | 'all', { count: number; total: number }>;
 
-export function summarizeMyClaims(db: Db, employeeId: string): StatusSummary {
-  const rows = all<{ status: Status; n: number; total: number }>(
-    db,
-    'SELECT status, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total FROM claims WHERE employee_id = ? GROUP BY status',
-    employeeId,
-  );
+export async function summarizeMyClaims(db: Db, employeeId: string): Promise<StatusSummary> {
+  // shortcut: sums in JS over the employee's rows; fine for demo volumes, move to a SQL view if claims grow large.
+  const rows = must(await db.from('claims').select('status, amount').eq('employee_id', employeeId)) as { status: Status; amount: number | string }[];
   const out: StatusSummary = {
     pending: { count: 0, total: 0 }, flagged: { count: 0, total: 0 },
     approved: { count: 0, total: 0 }, rejected: { count: 0, total: 0 }, all: { count: 0, total: 0 },
   };
   for (const r of rows) {
-    out[r.status] = { count: r.n, total: Math.round(r.total * 100) / 100 };
-    out.all.count += r.n;
-    out.all.total = Math.round((out.all.total + r.total) * 100) / 100;
+    const a = Number(r.amount);
+    for (const k of [r.status, 'all'] as const) {
+      out[k].count += 1;
+      out[k].total = Math.round((out[k].total + a) * 100) / 100;
+    }
   }
   return out;
 }
 
 export type ReviewFilter = Status | 'open' | 'all';
 
+const REVIEW_SELECT =
+  '*, employee:employees!claims_employee_id_fkey(name, grade, department), reviewer:employees!claims_reviewed_by_fkey(name)';
+const STATUS_RANK: Record<Status, number> = { flagged: 0, pending: 1, approved: 2, rejected: 2 };
+
 /** Finance queue: flagged first, then longest-waiting first; decided claims newest decision first. */
-export function listForReview(db: Db, status: ReviewFilter = 'open'): ReviewClaim[] {
-  const base = `SELECT c.*, e.name AS employee_name, e.grade AS employee_grade, e.department AS employee_department,
-                       r.name AS reviewer_name
-                FROM claims c
-                JOIN employees e ON e.id = c.employee_id
-                LEFT JOIN employees r ON r.id = c.reviewed_by`;
-  const order = `ORDER BY CASE c.status WHEN 'flagged' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
-                          CASE WHEN c.status IN ('flagged','pending') THEN c.submitted_at END ASC,
-                          c.reviewed_at DESC`;
-  type Row = Omit<ReviewClaim, 'ref' | 'category_label'>;
-  let rows: Row[];
-  if (status === 'open') rows = all<Row>(db, `${base} WHERE c.status IN ('pending','flagged') ${order}`);
-  else if (status === 'all') rows = all<Row>(db, `${base} ${order}`);
-  else rows = all<Row>(db, `${base} WHERE c.status = ? ${order}`, status);
-  return rows.map(toClaim);
+export async function listForReview(db: Db, status: ReviewFilter = 'open'): Promise<ReviewClaim[]> {
+  let q = db.from('claims').select(REVIEW_SELECT);
+  if (status === 'open') q = q.in('status', REVIEWABLE);
+  else if (status !== 'all') q = q.eq('status', status);
+  type Row = ClaimRow & { employee: { name: string; grade: Grade; department: string } | null; reviewer: { name: string } | null };
+  const rows = must(await q) as Row[];
+  const open = (s: Status) => REVIEWABLE.includes(s);
+  rows.sort((a, b) =>
+    STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+    (open(a.status) ? a.submitted_at.localeCompare(b.submitted_at) : (b.reviewed_at ?? '').localeCompare(a.reviewed_at ?? '')));
+  return rows.map(({ employee, reviewer, ...c }) => toClaim({
+    ...c,
+    employee_name: employee?.name ?? c.employee_id,
+    employee_grade: employee?.grade as Grade,
+    employee_department: employee?.department ?? '',
+    reviewer_name: reviewer?.name ?? null,
+  }));
 }
 
 export type ReviewCounts = Record<Status | 'open' | 'all', number>;
 
-export function reviewCounts(db: Db): ReviewCounts {
-  const rows = all<{ status: Status; n: number }>(db, 'SELECT status, COUNT(*) AS n FROM claims GROUP BY status');
+export async function reviewCounts(db: Db): Promise<ReviewCounts> {
+  const rows = must(await db.from('claims').select('status')) as { status: Status }[];
   const out = { pending: 0, flagged: 0, approved: 0, rejected: 0, open: 0, all: 0 };
-  for (const r of rows) out[r.status] = r.n;
+  for (const r of rows) out[r.status] += 1;
   out.open = out.pending + out.flagged;
   out.all = out.open + out.approved + out.rejected;
   return out;
@@ -320,19 +322,20 @@ export type DecideResult = { ok: true; claim: Claim } | { ok: false; code: numbe
  *  - only pending or flagged claims can be decided; a decision is final
  *  - rejecting needs a reason; approving a flagged claim is an exception and needs one too
  */
-export function decideClaim(
+export async function decideClaim(
   db: Db,
   reviewer: Employee,
   claimId: number,
   { decision, note }: { decision: string; note?: string },
   now: string = new Date().toISOString(),
-): DecideResult {
+): Promise<DecideResult> {
   if (reviewer.role !== 'finance') return { ok: false, code: 403, error: 'Only finance staff can review claims.' };
   if (decision !== 'approved' && decision !== 'rejected') {
     return { ok: false, code: 400, error: 'Decision must be "approved" or "rejected".' };
   }
 
-  const claim = one<ClaimRow>(db, 'SELECT * FROM claims WHERE id = ?', claimId);
+  if (!Number.isInteger(claimId) || claimId < 1) return { ok: false, code: 404, error: 'Claim not found.' };
+  const claim = must(await db.from('claims').select('*').eq('id', claimId).maybeSingle()) as ClaimRow | null;
   if (!claim) return { ok: false, code: 404, error: 'Claim not found.' };
   if (claim.employee_id === reviewer.id) return { ok: false, code: 403, error: 'You cannot review your own claim.' };
   if (!REVIEWABLE.includes(claim.status)) {
@@ -348,12 +351,11 @@ export function decideClaim(
   }
 
   // The status guard in the WHERE clause keeps two reviewers racing on one claim safe.
-  const res = run(
-    db,
-    `UPDATE claims SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ?
-     WHERE id = ? AND status IN ('pending','flagged')`,
-    decision, reviewer.id, now, cleanNote || null, claimId,
-  );
-  if (res.changes === 0) return { ok: false, code: 409, error: 'This claim was just decided by someone else.' };
-  return { ok: true, claim: toClaim(one<ClaimRow>(db, 'SELECT * FROM claims WHERE id = ?', claimId) as ClaimRow) };
+  const updated = must(
+    await db.from('claims')
+      .update({ status: decision, reviewed_by: reviewer.id, reviewed_at: now, review_note: cleanNote || null })
+      .eq('id', claimId).in('status', REVIEWABLE).select(),
+  ) as ClaimRow[];
+  if (updated.length === 0) return { ok: false, code: 409, error: 'This claim was just decided by someone else.' };
+  return { ok: true, claim: toClaim(updated[0]) };
 }

@@ -81,7 +81,7 @@ export async function handleChat(opts: {
             notice: 'The AI model failed after saving the claim.',
           };
         }
-        const fallback = respondWithRules(message, session, ctx);
+        const fallback = await respondWithRules(message, session, ctx);
         session.turns++;
         return {
           sessionId: session.id, mode: 'rules', reply: fallback.reply, toolCalls: fallback.toolCalls,
@@ -90,7 +90,7 @@ export async function handleChat(opts: {
       }
     }
 
-    const out = respondWithRules(message, session, ctx);
+    const out = await respondWithRules(message, session, ctx);
     session.turns++;
     return { sessionId: session.id, reply: out.reply, toolCalls: out.toolCalls, mode: 'rules' };
   } finally {

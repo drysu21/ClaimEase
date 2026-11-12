@@ -16,7 +16,7 @@ const EXAMPLES = [
 
 export default async function ChatPage() {
   const me = await currentEmployee();
-  const rules = getAllRulesForGrade(getDb(), me.grade);
+  const rules = await getAllRulesForGrade(getDb(), me.grade);
   return (
     <div className="page chat-page">
       <Chat employee={{ id: me.id, name: me.name, grade: me.grade }} agent={agentInfo()} examples={EXAMPLES} />

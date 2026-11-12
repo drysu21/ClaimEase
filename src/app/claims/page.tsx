@@ -23,8 +23,8 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
 
   const me = await currentEmployee();
   const db = getDb();
-  const claims = listMyClaims(db, me.id, { status, limit: 200 });
-  const summary = summarizeMyClaims(db, me.id);
+  const claims = await listMyClaims(db, me.id, { status, limit: 200 });
+  const summary = await summarizeMyClaims(db, me.id);
   const shown = status ? summary[status] : summary.all;
 
   return (

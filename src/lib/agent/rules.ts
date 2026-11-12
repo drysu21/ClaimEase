@@ -164,10 +164,10 @@ function isListRequest(t: string): boolean {
 
 // ---------------------------------------------------------------- the agent
 
-export function respondWithRules(text: string, session: Session, ctx: ToolContext): AgentReply {
+export async function respondWithRules(text: string, session: Session, ctx: ToolContext): Promise<AgentReply> {
   const toolCalls: TraceCall[] = [];
-  const call = (name: string, input: unknown = {}): ToolResult => {
-    const output = runTool(name, input, ctx);
+  const call = async (name: string, input: unknown = {}): Promise<ToolResult> => {
+    const output = await runTool(name, input, ctx);
     toolCalls.push({ name, input, output });
     return output;
   };
@@ -212,7 +212,7 @@ export function respondWithRules(text: string, session: Session, ctx: ToolContex
   }
 
   if (GREETING.test(trimmed) && amountInfo.amount === undefined) {
-    call('getEmployee');
+    await call('getEmployee');
     return done(
       `Hi ${firstName}. Tell me what you spent and I will pick the category, check it against the ${grade} policy and file the claim. ` +
         'For example: "I spent 2,400 rupees on a client dinner yesterday, submit it." You can also ask "How much can I claim for a hotel in Mumbai?" or "Show my pending claims."',
@@ -222,7 +222,7 @@ export function respondWithRules(text: string, session: Session, ctx: ToolContex
   if (isListRequest(trimmed) && amountInfo.amount === undefined) {
     session.draft = null;
     const statusWord = /\b(pending|flagged|approved|rejected)\b/i.exec(trimmed)?.[1].toLowerCase() as Status | undefined;
-    const res = call('getMyClaims', statusWord ? { status: statusWord } : {});
+    const res = await call('getMyClaims', statusWord ? { status: statusWord } : {});
     const count = Number(res.count ?? 0);
     const by = res.by_status as Record<string, { count: number }>;
     if (count === 0) return done(statusWord ? `You have no ${statusWord} claims.` : 'You have not submitted any claims yet.');
@@ -304,11 +304,11 @@ export function respondWithRules(text: string, session: Session, ctx: ToolContex
     };
   }
 
-  function check(d: Draft): AgentReply {
+  async function check(d: Draft): Promise<AgentReply> {
     const gap = missingDetails(d);
     if (gap) return gap;
-    call('getEmployee');
-    const ev = call('checkPolicyLimit', toolInput(d));
+    await call('getEmployee');
+    const ev = await call('checkPolicyLimit', toolInput(d));
     if (!ev.ok) return done(String(ev.error));
     const label = String(ev.category_label).toLowerCase();
     if (ev.outcome === 'blocked') {
@@ -326,17 +326,17 @@ export function respondWithRules(text: string, session: Session, ctx: ToolContex
     );
   }
 
-  function submit(d: Draft): AgentReply {
+  async function submit(d: Draft): Promise<AgentReply> {
     const gap = missingDetails(d);
     if (gap) return gap;
-    call('getEmployee');
-    const ev = call('checkPolicyLimit', toolInput(d));
+    await call('getEmployee');
+    const ev = await call('checkPolicyLimit', toolInput(d));
     if (!ev.ok) return done(String(ev.error));
     if (ev.outcome === 'blocked') {
       session.draft = null;
       return done(`I cannot submit this one. ${(ev.block_reasons as string[]).join(' ')} Nothing was saved.`);
     }
-    const res = call('createClaim', { ...toolInput(d), description: d.description ?? CATEGORY_BY_KEY[d.category!].label });
+    const res = await call('createClaim', { ...toolInput(d), description: d.description ?? CATEGORY_BY_KEY[d.category!].label });
     session.draft = null;
     if (!res.ok) return done(`I could not save that claim. ${((res.reasons as string[]) ?? [String(res.error)]).join(' ')}`);
 
@@ -356,9 +356,9 @@ export function respondWithRules(text: string, session: Session, ctx: ToolContex
     );
   }
 
-  function answerPolicy(cat: string | undefined, city: string | undefined): AgentReply {
-    call('getEmployee');
-    const res = call('getPolicyForCategory', cat ? { category: cat, ...(city ? { city } : {}) } : {});
+  async function answerPolicy(cat: string | undefined, city: string | undefined): Promise<AgentReply> {
+    await call('getEmployee');
+    const res = await call('getPolicyForCategory', cat ? { category: cat, ...(city ? { city } : {}) } : {});
     if (!res.ok) return done(String(res.error));
     const unitText = (u: string) => (u === 'per_night' ? 'per night' : 'per claim');
     const tail = ` Claims must be submitted within 60 days of the expense.`;

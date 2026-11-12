@@ -152,19 +152,20 @@ export async function runGemini(history: Content[], userText: string, ctx: ToolC
       }
 
       // Run every requested function and send all the results back in ONE user message.
-      const results: Part[] = calls.map((p) => {
+      const results: Part[] = [];
+      for (const p of calls) {
         const fc = p.functionCall!;
-        const output = runTool(fc.name ?? '', fc.args ?? {}, ctx);
+        const output = await runTool(fc.name ?? '', fc.args ?? {}, ctx);
         toolCalls.push({ name: fc.name ?? '', input: fc.args ?? {}, output });
-        return {
+        results.push({
           functionResponse: {
             ...(fc.id ? { id: fc.id } : {}),
             name: fc.name,
             // Gemini reads results under "output", and failures under "error".
             response: output.ok === false ? { error: output } : { output },
           },
-        };
-      });
+        });
+      }
       contents.push({ role: 'user', parts: results });
     }
     throw new Error(`The model did not finish within ${MAX_STEPS} steps.`);

@@ -21,7 +21,7 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const db = getDb();
 
   if (me.role !== 'finance') {
-    const financeUser = listEmployees(db).find((e) => e.role === 'finance');
+    const financeUser = (await listEmployees(db)).find((e) => e.role === 'finance');
     return (
       <div className="page">
         <div className="empty-block" role="status">
@@ -41,8 +41,8 @@ export default async function FinancePage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const raw = Array.isArray(sp.status) ? sp.status[0] : sp.status;
   const filter: ReviewFilter = TABS.some((t) => t.key === raw) ? (raw as ReviewFilter) : 'open';
-  const counts = reviewCounts(db);
-  const items: ReviewItem[] = listForReview(db, filter).map((c) => ({
+  const counts = await reviewCounts(db);
+  const items: ReviewItem[] = (await listForReview(db, filter)).map((c) => ({
     id: c.id,
     ref: c.ref,
     employee_name: c.employee_name,

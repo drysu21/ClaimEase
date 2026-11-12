@@ -4,6 +4,7 @@
 // Safety design: the employee id is NEVER a tool argument. It comes from the signed-in
 // session (ToolContext), so a prompt like "file this for E004" cannot act for someone else.
 
+import { z } from 'zod';
 import type { Db } from './db';
 import {
   createClaim, evaluateClaim, getAllRulesForGrade, getRules, listMyClaims, summarizeMyClaims,
@@ -110,23 +111,34 @@ export const TOOL_DEFS: ToolDef[] = [
   },
 ];
 
-// ---------- input coercion (model output is untrusted, so check everything) ----------
+// ---------- argument checks (model output is untrusted, so Zod checks every tool's input) ----------
 
-function str(v: unknown): string | undefined {
-  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
-}
-function num(v: unknown): number | undefined {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string' && v.trim() && Number.isFinite(Number(v.replace(/,/g, '')))) return Number(v.replace(/,/g, ''));
-  return undefined;
-}
+const text = z.string().trim().max(300).transform((v) => v || undefined);
+// Optional fields: Gemini sometimes sends null for "not given".
+const opt = <T extends z.ZodTypeAny>(s: T) => s.nullish().transform((v) => v ?? undefined);
+const money = z.preprocess(
+  (v) => (typeof v === 'string' ? v.replace(/[,₹\s]/g, '') : v),
+  z.coerce.number({ error: 'amount must be a number in rupees.' }).finite(),
+);
+const category = z.enum(CATEGORY_KEYS as [string, ...string[]], { error: `category must be one of: ${CATEGORY_KEYS.join(', ')}.` });
+const expense = {
+  category,
+  amount: money,
+  expense_date: opt(z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'expense_date must be YYYY-MM-DD.')),
+  units: opt(z.coerce.number().int('units must be a whole number of nights.')),
+  city: opt(text),
+};
 
-function badCategory(v: unknown): ToolResult | null {
-  const c = str(v);
-  if (!c) return { ok: false, error: `category is required. One of: ${CATEGORY_KEYS.join(', ')}.` };
-  if (!CATEGORY_BY_KEY[c]) return { ok: false, error: `Unknown category "${c}". One of: ${CATEGORY_KEYS.join(', ')}.` };
-  return null;
-}
+export const TOOL_SCHEMAS = {
+  getEmployee: z.object({}),
+  getPolicyForCategory: z.object({ category: opt(category), city: opt(text) }),
+  checkPolicyLimit: z.object(expense),
+  createClaim: z.object({ ...expense, description: opt(text) }),
+  getMyClaims: z.object({
+    status: opt(z.enum(STATUSES)),
+    limit: opt(z.coerce.number().int().min(1).max(200)),
+  }),
+} satisfies Record<ToolName, z.ZodTypeAny>;
 
 function slimClaim(c: Claim) {
   return {
@@ -138,19 +150,22 @@ function slimClaim(c: Claim) {
 
 // ---------- the tools ----------
 
-export function runTool(name: string, input: unknown, ctx: ToolContext): ToolResult {
-  try {
-    const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
-    const { db, employee, today } = ctx;
+export async function runTool(name: string, input: unknown, ctx: ToolContext): Promise<ToolResult> {
+  const schema = TOOL_SCHEMAS[name as ToolName];
+  if (!schema) return { ok: false, error: `Unknown tool "${name}".` };
+  const parsed = schema.safeParse(input && typeof input === 'object' ? input : {});
+  if (!parsed.success) return { ok: false, error: parsed.error.issues.map((i) => i.message).join(' ') };
 
+  try {
+    const { db, employee, today } = ctx;
     switch (name as ToolName) {
       case 'getEmployee':
         return { ok: true, id: employee.id, name: employee.name, grade: employee.grade, department: employee.department };
 
       case 'getPolicyForCategory': {
-        const categoryRaw = str(i.category);
-        if (!categoryRaw) {
-          const rules = getAllRulesForGrade(db, employee.grade);
+        const i = parsed.data as z.infer<typeof TOOL_SCHEMAS.getPolicyForCategory>;
+        if (!i.category) {
+          const rules = await getAllRulesForGrade(db, employee.grade);
           const policy = CATEGORIES.map((c) => ({
             category: c.key,
             category_label: c.label,
@@ -158,13 +173,11 @@ export function runTool(name: string, input: unknown, ctx: ToolContext): ToolRes
           }));
           return { ok: true, grade: employee.grade, metro_cities: KNOWN_CITIES, policy };
         }
-        const bad = badCategory(categoryRaw);
-        if (bad) return bad;
-        const cat = CATEGORY_BY_KEY[categoryRaw];
-        const city = str(i.city) ?? null;
+        const cat = CATEGORY_BY_KEY[i.category];
+        const city = i.city ?? null;
         const isHotel = cat.key === 'hotel';
         const tier = isHotel && city ? cityTier(city) : null;
-        const rules = getRules(db, cat.key, employee.grade, tier);
+        const rules = await getRules(db, cat.key, employee.grade, tier);
         return {
           ok: true,
           category: cat.key,
@@ -179,29 +192,20 @@ export function runTool(name: string, input: unknown, ctx: ToolContext): ToolRes
       }
 
       case 'checkPolicyLimit': {
-        const bad = badCategory(i.category);
-        if (bad) return bad;
-        const amount = num(i.amount);
-        if (amount === undefined) return { ok: false, error: 'amount is required and must be a number.' };
-        const ev = evaluateClaim(
+        const i = parsed.data as z.infer<typeof TOOL_SCHEMAS.checkPolicyLimit>;
+        const ev = await evaluateClaim(
           db, employee,
-          { category: String(i.category), amount, units: num(i.units), city: str(i.city), expenseDate: str(i.expense_date) },
+          { category: i.category, amount: i.amount, units: i.units, city: i.city, expenseDate: i.expense_date },
           today,
         );
         return { ok: true, ...ev };
       }
 
       case 'createClaim': {
-        const bad = badCategory(i.category);
-        if (bad) return bad;
-        const amount = num(i.amount);
-        if (amount === undefined) return { ok: false, error: 'amount is required and must be a number.' };
-        const res = createClaim(
+        const i = parsed.data as z.infer<typeof TOOL_SCHEMAS.createClaim>;
+        const res = await createClaim(
           db, employee,
-          {
-            category: String(i.category), amount, units: num(i.units), city: str(i.city),
-            expenseDate: str(i.expense_date), description: str(i.description),
-          },
+          { category: i.category, amount: i.amount, units: i.units, city: i.city, expenseDate: i.expense_date, description: i.description },
           { today },
         );
         if (!res.ok) return { ok: false, saved: false, reasons: res.reasons, outcome: 'blocked' };
@@ -217,19 +221,13 @@ export function runTool(name: string, input: unknown, ctx: ToolContext): ToolRes
       }
 
       case 'getMyClaims': {
-        const statusRaw = str(i.status);
-        if (statusRaw && !(STATUSES as readonly string[]).includes(statusRaw)) {
-          return { ok: false, error: `status must be one of: ${STATUSES.join(', ')}.` };
-        }
-        const status = statusRaw as Status | undefined;
-        const claims = listMyClaims(db, employee.id, { status, limit: num(i.limit) ?? 20 });
-        const summary = summarizeMyClaims(db, employee.id);
+        const i = parsed.data as z.infer<typeof TOOL_SCHEMAS.getMyClaims>;
+        const status = i.status as Status | undefined;
+        const claims = await listMyClaims(db, employee.id, { status, limit: i.limit ?? 20 });
+        const summary = await summarizeMyClaims(db, employee.id);
         const shown = status ? summary[status] : summary.all;
         return { ok: true, filter: status ?? 'all', count: shown.count, total_amount: shown.total, by_status: summary, claims: claims.map(slimClaim) };
       }
-
-      default:
-        return { ok: false, error: `Unknown tool "${name}".` };
     }
   } catch (err) {
     console.error(`[tool ${name}]`, err);

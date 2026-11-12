@@ -7,7 +7,7 @@ import { UserSwitcher } from './UserSwitcher';
 
 export async function Header() {
   const me = await currentEmployee();
-  const people = listEmployees(getDb()).map(({ id, name, grade, role }) => ({ id, name, grade, role }));
+  const people = (await listEmployees(getDb())).map(({ id, name, grade, role }) => ({ id, name, grade, role }));
   return (
     <header className="topbar">
       <div className="topbar-inner">

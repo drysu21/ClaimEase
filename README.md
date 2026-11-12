@@ -4,19 +4,18 @@ An expense claim assistant. An employee describes an expense in plain words; the
 category, checks it against the policy for their grade, saves the claim, and flags it if it breaks a rule.
 Finance staff review flagged and pending claims on their own page.
 
-Built with Next.js 16 (App Router, TypeScript) and SQLite (`node:sqlite`, so no native modules to compile).
+Built with Next.js 16 (App Router, TypeScript), Supabase PostgreSQL (supabase-js), Gemini function calling and Zod.
 
 ## Run it
 
-Needs Node 22.13 or newer.
+Needs Node 22.13 or newer, and a Supabase project: run `supabase/schema.sql` then `supabase/seed_data.sql` in the SQL Editor, and put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in `.env.local`.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The database (`data/claimease.db`) is created and seeded on the first request.
-`npm run reset-db` deletes it so it is re-seeded next time.
+Open http://localhost:3000.
 
 You are signed in as **Meera Nair (E001, grade L2)**.
 
@@ -52,7 +51,7 @@ All in [`src/lib/claims.ts`](src/lib/claims.ts), and nowhere else:
 
 The language model never decides a status. It can only call the tools, and `createClaim` re-runs the policy check itself before saving.
 
-Limits live in the `policy_rules` table and are seeded in [`src/lib/seed.ts`](src/lib/seed.ts). Edit them there (then `npm run reset-db`).
+Limits live in the `policy_rules` table, seeded by [`supabase/seed_data.sql`](supabase/seed_data.sql). Tool arguments are checked with Zod (`TOOL_SCHEMAS` in `src/lib/tools.ts`) before any tool runs.
 
 ## The agent
 
@@ -79,8 +78,7 @@ Things worth knowing about Gemini:
 npm test
 ```
 
-33 tests: the policy and date rules, finance permissions, the three demo prompts through the built-in assistant,
-and the Gemini function-calling loop run against a local fake of the Gemini API (so no key is needed to run them).
+Zod argument checks for the agent tools (no database or key needed).
 
 ## Known limits
 
