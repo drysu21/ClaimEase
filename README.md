@@ -9,6 +9,7 @@ checking each one by hand.
 ## What our app does
 - The employee describes an expense in plain English; a Gemini agent picks the category and checks it against the policy for their grade.
 - It saves the claim to Supabase as **pending**, or **flagged** with the exact reason when it is over the limit.
+- It catches **possible duplicates**: the same amount, category and date already claimed is flagged with the earlier claim number.
 - It refuses claims older than 60 days, future dates, and requests to file for someone else.
 - Employees see their claims by status; finance staff review the flagged queue and approve or reject with a note.
 

@@ -10,6 +10,7 @@
 - Business rules live only in `src/lib/claims.ts`:
   - Amount above `max_amount` for the grade and category: save with status `flagged` and the reason.
   - Expenses older than 60 days, or in the future: refuse, save nothing.
+  - Same category, amount and expense date already claimed (not rejected): save as `flagged`, "Possible duplicate".
   - Hotels are limited per night by city tier, so city and nights are needed.
   - Finance cannot review their own claim; rejecting, or approving a flagged claim, needs a note; decisions are final.
 - The employee id comes from the signed-in session (`src/lib/auth.ts`). Never take a user id as a tool argument.

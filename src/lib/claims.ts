@@ -184,6 +184,21 @@ export async function evaluateClaim(db: Db, employee: Employee, input: ClaimInpu
     }
   }
 
+  // Duplicate check: same employee, category, amount and expense date already claimed (and not rejected).
+  if (cat && Number.isFinite(amount) && ageDays !== null && !block.length) {
+    const dupes = must(
+      await db.from('claims').select('id')
+        .eq('employee_id', employee.id).eq('category', cat.key).eq('amount', amount).eq('expense_date', expenseDate)
+        .neq('status', 'rejected').order('id').limit(3),
+    ) as { id: number }[];
+    if (dupes.length) {
+      flags.push(
+        `Possible duplicate: ${dupes.map((d) => claimRef(d.id)).join(', ')} already claims ${inr(amount)} for ` +
+          `${cat.label.toLowerCase()} on ${formatDate(expenseDate)}.`,
+      );
+    }
+  }
+
   return {
     category: input.category,
     category_label: cat?.label ?? null,
