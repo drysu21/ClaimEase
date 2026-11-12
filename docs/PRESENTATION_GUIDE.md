@@ -4,7 +4,7 @@ About 5 minutes of demo plus questions. Open https://claimease-alpha.vercel.app 
 and keep `docs/ClaimEase_slides.pdf` open in a second window.
 
 ## Before you go up (2 minutes)
-- [ ] Live link open on **New claim**, signed in as **Meera Nair (E001, L2)**. Click **New chat** so the chat is empty.
+- [ ] Live link open on **Dashboard** (`/`), signed in as **Meera Nair (E001, L2)**. Open **New claim** once and click **New chat** so the chat is empty, then go back to Dashboard.
 - [ ] Slides open on slide 1.
 - [ ] Backup: `npm run dev` working on a laptop, in case the Wi-Fi fails.
 - [ ] Everyone knows their part below and the answers to the judge questions.
@@ -14,10 +14,10 @@ and keep `docs/ClaimEase_slides.pdf` open in a second window.
 | Time | Who | Slide / screen | What to say |
 |---|---|---|---|
 | 0:00–0:30 | **Devanath** (Team Lead) | Slide 1 | "We are Team 21, PS5, Expense Claim Assistant. Our app is **ClaimEase**: an employee describes an expense in plain English, and an AI agent files it, checks it against policy, and flags anything that breaks a rule." Introduce the team and roles. |
-| 0:30–1:00 | **Lalitya** (Frontend) | Slide 2 | "Employees don't know the limit for their grade, so they submit claims that break policy. Finance checks every claim by hand. In our data there are 36 limits to remember, and 5 of 14 claims broke one." |
-| 1:00–3:00 | **Sarwan** (AI / Agent) | **Live app** | Live demo, 4 prompts below. After each one, open **Steps taken** to show which tool Gemini chose. |
-| 3:00–3:45 | **Rohith** (Backend) | Slide 4 | "Gemini never touches the database. It only asks for a tool. Our code checks the arguments with Zod, runs the tool against Supabase, and the business rules are in code, not in the prompt." |
-| 3:45–4:30 | **Devanath** | **Live app → Finance review**, then slide 5 | Switch "Signed in as" to **Priya Sharma (finance)**. Show flagged claims first, and approve one with a note. Then slide 5: results and links. |
+| 0:30–1:00 | **Lalitya** (Frontend) | Slides 2–3 | "Employees don't know the limit for their grade, so they submit claims that break policy. Finance checks every claim by hand. In our data there are 36 limits to remember, and 5 of 14 claims broke one." Slide 3: "ClaimEase is not a chatbot. It is one system for three users: the employee files, finance reviews only the flagged queue, and the manager sees the dashboard." |
+| 1:00–3:00 | **Sarwan** (AI / Agent) | **Live app** | Start on the **Dashboard**: "Every number here is live from Supabase: claims checked, % within policy, money held in flagged claims." Click **File a claim with the agent**, then the 4 prompts below. After each one, point at the **Agent workflow** under the reply: numbered steps, **READ** or **WRITE**, the tool, and the result. |
+| 3:00–3:45 | **Rohith** (Backend) | Slide 5 | "Gemini never touches the database. It only asks for a tool. Our code checks the arguments with Zod, runs the tool against Supabase, and the business rules are in code, not in the prompt." |
+| 3:45–4:30 | **Devanath** | **Live app → Finance review**, then slide 6 | Switch "Signed in as" to **Priya Sharma (finance)**. Show flagged claims first, and approve one with a note. Back to **Dashboard**: the decided count went up. Then slide 6: results and links. |
 
 ## The live demo (Sarwan), in this order
 
@@ -31,7 +31,7 @@ and keep `docs/ClaimEase_slides.pdf` open in a second window.
    → Flagged as a **possible duplicate** of the claim from step 1. *Say:* "Duplicate claims are a real source of loss for finance. ClaimEase catches them automatically."
 5. *(If time)* **Refusal:** `I spent 500 on lunch on 1 Sep, submit it.` → refused, older than 60 days, nothing saved.
 
-Then click **My claims** to show the new rows came straight from Supabase.
+Then click **My claims** to show the new rows came straight from Supabase, and **Dashboard** to show the numbers changed.
 
 ## Judge questions and who answers
 
@@ -46,7 +46,8 @@ Then click **My claims** to show the new rows came straight from Supabase.
 | How do you detect duplicates? | Sarwan | Before saving, we look for a claim by the same employee with the same category, amount and date that isn't rejected. If one exists, the new claim is flagged with that claim number. |
 | What happens if Gemini is down or out of quota? | Sarwan | A built-in rule-based assistant answers with the same tools, so the demo never crashes. If a claim was already saved, we never re-run it, so nothing is filed twice. |
 | What is the bar on the claim card? | Lalitya | The limit meter: how much of the grade limit this claim uses. Green within the limit; past the black line it turns amber-red, so the employee sees at a glance why it was flagged. |
-| What would you add next? | Lalitya | Receipt photo upload with OCR to fill amount and date, real sign-in, and a monthly spend summary for finance. |
+| Isn't this just a chatbot? | Devanath | No. A chatbot answers. Our agent acts: it chooses tools, runs several in a row (READ policy → WRITE claim), saves to the database, and finance and the dashboard react. The **Agent workflow** shows every step it took. |
+| What would you add next? | Lalitya | Receipt photo upload with OCR, real sign-in with Supabase Auth, a manager approval step, and Slack/email alerts. Full roadmap in `docs/PLAN.md`. |
 | Who wrote this part? | Owner | Each member explains their own area, even if AI helped write it. |
 
 ## If something goes wrong
