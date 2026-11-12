@@ -1,4 +1,59 @@
-# ClaimEase
+# ClaimEase: Expense Claim Assistant
+
+Team 21 | PS5 | SRM Agentic AI Hackathon
+
+## The problem
+Employees who spend money on work submit claims that break the expense policy, and the finance team spends hours
+checking each one by hand.
+
+## What our app does
+- The employee describes an expense in plain English; a Gemini agent picks the category and checks it against the policy for their grade.
+- It saves the claim to Supabase as **pending**, or **flagged** with the exact reason when it is over the limit.
+- It refuses claims older than 60 days, future dates, and requests to file for someone else.
+- Employees see their claims by status; finance staff review the flagged queue and approve or reject with a note.
+
+## Live demo
+- Vercel link: https://claimease-alpha.vercel.app
+- Passcode: none (signed in as Meera Nair, E001, grade L2; pick Priya Sharma in "Signed in as" to see Finance review)
+- Try this prompt: "I spent 2,400 rupees on a client dinner yesterday, submit it."
+- A request it flags: "I spent 6,500 on a client dinner today, submit it." A request it refuses: "I spent 500 on lunch on 1 Sep, submit it."
+
+## Agent tools
+| Tool | What it does | Reads or writes |
+| --- | --- | --- |
+| getEmployee | Returns the signed-in employee and grade | Reads |
+| getPolicyForCategory | Policy limit for a category (hotel by city tier) | Reads |
+| checkPolicyLimit | Checks an expense against the policy without saving | Reads |
+| createClaim | Saves the claim as pending or flagged with the reason | Writes |
+| getMyClaims | Lists the employee's claims and totals by status | Reads |
+
+Every tool's arguments are checked with Zod before it runs. The employee id is never a tool argument.
+
+## Database tables
+- `employees`: who can claim, their grade (L1 to L4) and role (employee or finance)
+- `policy_rules`: maximum amount per category and grade, per claim or per night, by city tier for hotels
+- `claims`: every claim with amount, date, status, flag reason and the finance decision
+
+## Tech stack
+Next.js, React, TypeScript, Supabase, Gemini API (function calling), Zod, Vercel
+
+## Team
+| Name | Role |
+| --- | --- |
+| Sugavasi Devanath | Team Lead, Database (repo, Supabase, Vercel) |
+| Thondamalla Sarwan | AI / Agent (tools, system prompt) |
+| Amirisetty Rohith | Backend / API (API route, Zod) |
+| Gonuguntla Lalitya | Frontend (pages, components) |
+
+Build plan and vision: [docs/PLAN.md](docs/PLAN.md). Rules for AI coding agents: [AGENTS.md](AGENTS.md).
+
+## Run it locally
+1. npm install
+2. Run `supabase/schema.sql` then `supabase/seed_data.sql` in the Supabase SQL Editor
+3. Copy .env.example to .env.local and fill in SUPABASE_URL, SUPABASE_SECRET_KEY, GEMINI_API_KEY
+4. npm run dev
+
+## More details
 
 An expense claim assistant. An employee describes an expense in plain words; the agent finds the
 category, checks it against the policy for their grade, saves the claim, and flags it if it breaks a rule.
@@ -6,7 +61,7 @@ Finance staff review flagged and pending claims on their own page.
 
 Built with Next.js 16 (App Router, TypeScript), Supabase PostgreSQL (supabase-js), Gemini function calling and Zod.
 
-## Run it
+### Run it
 
 Needs Node 22.13 or newer, and a Supabase project: run `supabase/schema.sql` then `supabase/seed_data.sql` in the SQL Editor, and put `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in `.env.local`.
 
@@ -40,7 +95,7 @@ Things worth trying: `I spent 6,500 on a client dinner today` (saved as **flagge
 To see the finance page, pick **Priya Sharma (E900, finance)** in the "Signed in as" menu. That menu is a demo
 convenience, not real authentication (see below).
 
-## The business rules
+### The business rules
 
 All in [`src/lib/claims.ts`](src/lib/claims.ts), and nowhere else:
 
@@ -53,7 +108,7 @@ The language model never decides a status. It can only call the tools, and `crea
 
 Limits live in the `policy_rules` table, seeded by [`supabase/seed_data.sql`](supabase/seed_data.sql). Tool arguments are checked with Zod (`TOOL_SCHEMAS` in `src/lib/tools.ts`) before any tool runs.
 
-## The agent
+### The agent
 
 The five tools (`src/lib/tools.ts`): `getEmployee`, `getPolicyForCategory`, `checkPolicyLimit`, `createClaim` (the only write), `getMyClaims`.
 The employee id is **not** a tool argument. It always comes from the signed-in session, so a message like "file this for E004" cannot act for someone else.
@@ -72,7 +127,7 @@ Things worth knowing about Gemini:
 - **A call never hangs the chat.** Each model call is cut off after 30 seconds (`GEMINI_TIMEOUT_MS`) and the built-in assistant answers instead.
 - `CLAIMEASE_DEBUG=1` logs each model step (timing and which functions it called) to the server console.
 
-## Tests
+### Tests
 
 ```bash
 npm test
@@ -80,7 +135,7 @@ npm test
 
 Zod argument checks for the agent tools (no database or key needed).
 
-## Known limits
+### Known limits
 
 - **Sign-in is a demo.** The "Signed in as" cookie is not secure: anyone can set it, and the finance role follows it. Replace `src/lib/auth.ts` with a real session before using this for anything real.
 - Chat memory is in the server process. Restarting it clears conversations (claims are in the database and stay).
