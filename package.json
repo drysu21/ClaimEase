@@ -1,0 +1,30 @@
+{
+  "name": "claimease",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ClaimEase: an expense claim assistant that categorises, policy-checks, saves and flags employee claims.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=ExperimentalWarning --import tsx --test test/*.test.ts",
+    "reset-db": "node -e \"require('fs').rmSync('data',{recursive:true,force:true});console.log('data/ removed; the database is re-created and re-seeded on next start')\""
+  },
+  "dependencies": {
+    "@google/genai": "^3.2.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
