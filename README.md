@@ -89,7 +89,8 @@ Things worth trying: `I spent 6,500 on a client dinner today` (saved as **flagge
 
 ### Pages
 
-- **New claim** (`/chat`): the chat, with your grade's limits beside it. Each reply has a "Steps taken" list showing the tools that ran.
+- **Dashboard** (`/`): claims checked, % within policy, money held in flagged claims, spend by category, live from Supabase.
+- **New claim** (`/chat`): the chat, with your grade's limits beside it. Each reply shows a claim card with a limit meter and an "Agent workflow" timeline: every tool step, marked READ or WRITE, with its result.
 - **My claims** (`/claims`): your ledger, filterable by status. Flagged claims show their reason; decided claims show the finance note.
 - **Finance review** (`/finance`): the queue, flagged first. Approve or reject inline. Rejecting needs a reason, and approving a *flagged* claim needs a note explaining the exception. Decisions are final, and nobody can review their own claim.
 
